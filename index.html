@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#4f46e5" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+  <title>AutoSync Studio — Offline-First PWA &amp; Google Sheets Sync</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'Noto Sans Devanagari', 'system-ui', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', 'Noto Sans Devanagari', system-ui, -apple-system, sans-serif;
+    }
+    #celebration-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 60;
+    }
+    .pulse-dot {
+      animation: pulseRing 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulseRing {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.45; transform: scale(1.25); }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen transition-colors duration-200">
+  <canvas id="celebration-canvas"></canvas>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full px-4 sm:px-0 pointer-events-none"></div>
+
+  <!-- Top Navigation Bar -->
+  <header class="sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-b border-slate-200 dark:border-slate-800">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+          <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+        </div>
+        <div class="min-w-0">
+          <h1 class="text-base sm:text-lg font-bold tracking-tight truncate" data-i18n="appTitle">AutoSync Studio</h1>
+          <p class="text-xs text-slate-500 dark:text-slate-400 truncate" data-i18n="appSubtitle">ऑफलाइन-फर्स्ट PWA, IndexedDB व Google Sheets सिंक</p>
+        </div>
+      </div>
+
+      <!-- Controls Toolbar -->
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- Online/Offline Network Simulator -->
+        <button id="btn-network-toggle" type="button"
+          class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors cursor-pointer bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+          <span id="network-dot" class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span>
+          <span id="network-label">ऑनलाइन (ऑटो-सिंक सक्रिय)</span>
+        </button>
+
+        <!-- Web Speech Toggle -->
+        <button id="btn-speech-toggle" type="button" title="Web Speech Narration"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+          <i data-lucide="volume-2" class="w-4 h-4 text-indigo-600 dark:text-indigo-400"></i>
+          <span id="speech-label" data-i18n="speechOn">आवाज़: चालू</span>
+        </button>
+
+        <!-- Language Toggle -->
+        <button id="btn-lang-toggle" type="button"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+          <i data-lucide="languages" class="w-4 h-4 text-slate-600 dark:text-slate-300"></i>
+          <span id="lang-label">EN / हिं</span>
+        </button>
+
+        <!-- Theme Toggle -->
+        <button id="btn-theme-toggle" type="button" aria-label="Toggle Theme"
+          class="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+          <i id="theme-icon" data-lucide="moon" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- Status KPI Strip -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+          <span data-i18n="kpiTotal">कुल रिकॉर्ड (IndexedDB)</span>
+          <i data-lucide="database" class="w-4 h-4 text-indigo-500"></i>
+        </div>
+        <div id="kpi-total" class="text-2xl font-bold">0</div>
+        <div id="kpi-storage-mode" class="text-[11px] text-slate-400 mt-1">IndexedDB: Active</div>
+      </div>
+
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+          <span data-i18n="kpiSynced">सिंक हो चुके</span>
+          <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i>
+        </div>
+        <div id="kpi-synced" class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">0</div>
+        <div class="text-[11px] text-slate-400 mt-1" data-i18n="kpiSheetsTarget">Google Sheets v4</div>
+      </div>
+
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+          <span data-i18n="kpiPending">सिंक कतार (Queue)</span>
+          <i data-lucide="clock" class="w-4 h-4 text-amber-500"></i>
+        </div>
+        <div id="kpi-pending" class="text-2xl font-bold text-amber-600 dark:text-amber-400">0</div>
+        <div id="kpi-sync-state" class="text-[11px] text-slate-400 mt-1" data-i18n="syncIdle">ऑटो-वॉचर तैयार</div>
+      </div>
+
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+          <span data-i18n="kpiWorker">सर्विस वर्कर</span>
+          <i data-lucide="cpu" class="w-4 h-4 text-violet-500"></i>
+        </div>
+        <div id="kpi-sw-status" class="text-sm font-bold text-violet-600 dark:text-violet-400 mt-1">सक्रिय (Auto)</div>
+        <div id="kpi-last-sync" class="text-[11px] text-slate-400 mt-1">--:--:--</div>
+      </div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+      <button data-tab="workspace" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white transition-colors cursor-pointer" data-i18n="tabWorkspace">डेटा और ऑटो-सिंक</button>
+      <button data-tab="sheets" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer" data-i18n="tabSheets">Google Sheets API</button>
+      <button data-tab="architecture" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer" data-i18n="tabArch">आर्किटेक्चर व लॉग्स</button>
+    </div>
+
+    <!-- TAB 1: WORKSPACE (DATA + SYNC + JSON + CELEBRATION) -->
+    <section id="panel-workspace" class="tab-panel grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <!-- Left Column: Add Record Form + Quick Actions -->
+      <div class="lg:col-span-5 space-y-5">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <h2 class="text-base font-bold mb-1 flex items-center gap-2">
+            <i data-lucide="plus-circle" class="w-5 h-5 text-indigo-600 dark:text-indigo-400"></i>
+            <span data-i18n="formHeading">नया रिकॉर्ड जोड़ें</span>
+          </h2>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mb-4" data-i18n="formSub">ऑफलाइन होने पर भी डेटा IndexedDB में सुरक्षित रहेगा और ऑनलाइन होते ही अपने आप सिंक हो जाएगा।</p>
+
+          <form id="record-form" class="space-y-3">
+            <div>
+              <label for="input-title" class="block text-xs font-semibold mb-1" data-i18n="labelTitle">शीर्षक / कार्य</label>
+              <input id="input-title" type="text" required placeholder="उदा. इन्वेंटरी ऑडिट अपडेट"
+                class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label for="input-category" class="block text-xs font-semibold mb-1" data-i18n="labelCategory">श्रेणी</label>
+                <select id="input-category"
+                  class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="Operations">Operations</option>
+                  <option value="Sales">Sales</option>
+                  <option value="Inventory">Inventory</option>
+                  <option value="Support">Support</option>
+                </select>
+              </div>
+              <div>
+                <label for="input-value" class="block text-xs font-semibold mb-1" data-i18n="labelValue">मान / मात्रा</label>
+                <input id="input-value" type="number" step="any" required placeholder="1250"
+                  class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+            </div>
+
+            <div>
+              <label for="input-notes" class="block text-xs font-semibold mb-1" data-i18n="labelNotes">विवरण (वैकल्पिक)</label>
+              <input id="input-notes" type="text" placeholder="बैकग्राउंड सिंक टेस्ट नोट..."
+                class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <button type="submit"
+              class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-sm">
+              <i data-lucide="save" class="w-4 h-4"></i>
+              <span data-i18n="btnSave">सेव करें और ऑटो-सिंक में भेजें</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- JSON Backup, Speech & Celebration Controls -->
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+          <h3 class="text-sm font-bold flex items-center gap-2">
+            <i data-lucide="sparkles" class="w-4 h-4 text-amber-500"></i>
+            <span data-i18n="toolsHeading">डेटा बैकअप व इंटरैक्टिव टूल्स</span>
+          </h3>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <button id="btn-export-json" type="button"
+              class="px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
+              <i data-lucide="download" class="w-4 h-4 text-indigo-500"></i>
+              <span data-i18n="btnExport">JSON एक्सपोर्ट</span>
+            </button>
+
+            <label for="input-import-json"
+              class="px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
+              <i data-lucide="upload" class="w-4 h-4 text-emerald-500"></i>
+              <span data-i18n="btnImport">JSON इंपोर्ट</span>
+              <input id="input-import-json" type="file" accept=".json,application/json" class="hidden" />
+            </label>
+
+            <button id="btn-narrate-summary" type="button"
+              class="px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
+              <i data-lucide="mic" class="w-4 h-4 text-violet-500"></i>
+              <span data-i18n="btnNarrate">सारांश सुनें</span>
+            </button>
+
+            <button id="btn-test-celebrate" type="button"
+              class="px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
+              <i data-lucide="party-popper" class="w-4 h-4 text-pink-500"></i>
+              <span data-i18n="btnCelebrate">कैनवस एनिमेशन</span>
+            </button>
+
+            <button id="btn-export-csv" type="button"
+              class="col-span-2 px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4 text-teal-500"></i>
+              <span data-i18n="btnExportCsv">CSV एक्सपोर्ट (Google Sheets रेडी)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Live Records List & Filter -->
+      <div class="lg:col-span-7 bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 class="text-base font-bold" data-i18n="recordsHeading">IndexedDB रिकॉर्ड्स</h2>
+            <p class="text-xs text-slate-500 dark:text-slate-400" data-i18n="recordsSub">सिंक स्थिति के साथ लाइव लोकल डेटाबेस</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <select id="filter-status"
+              class="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium">
+              <option value="all" data-i18n="filterAll">सभी</option>
+              <option value="synced" data-i18n="filterSynced">सिंक हो चुके</option>
+              <option value="pending" data-i18n="filterPending">लंबित (Queue)</option>
+            </select>
+            <button id="btn-force-sync" type="button"
+              class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer">
+              <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+              <span data-i18n="btnSyncNow">अभी सिंक करें</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="records-list" class="space-y-2.5 flex-1 overflow-y-auto max-h-[460px] pr-1"></div>
+      </div>
+    </section>
+
+    <!-- TAB 2: GOOGLE SHEETS API CONFIG -->
+    <section id="panel-sheets" class="tab-panel hidden grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div class="lg:col-span-6 bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base font-bold flex items-center gap-2">
+            <i data-lucide="sheet" class="w-5 h-5 text-emerald-600"></i>
+            <span data-i18n="sheetsHeading">Google Sheets API v4 कॉन्फ़िगरेशन</span>
+          </h2>
+          <span id="sheets-mode-badge" class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">डेमो सिंक मोड</span>
+        </div>
+
+        <p class="text-xs text-slate-500 dark:text-slate-400" data-i18n="sheetsDesc">
+          असली Google Sheet में ऑटो-अपेंड करने के लिए अपनी Spreadsheet ID और OAuth2 Access Token दर्ज करें, या तुरंत परीक्षण के लिए डेमो सिंक मोड चालू रखें।
+        </p>
+
+        <form id="sheets-config-form" class="space-y-3">
+          <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <div>
+              <div class="text-xs font-bold" data-i18n="demoModeTitle">ऑटोमेटेड डेमो सिंक मोड</div>
+              <div class="text-[11px] text-slate-500 dark:text-slate-400" data-i18n="demoModeSub">बिना API कुंजी के बैकग्राउंड सिंक का अनुभव करें</div>
+            </div>
+            <input id="toggle-demo-mode" type="checkbox" checked class="w-4 h-4 accent-indigo-600 cursor-pointer" />
+          </div>
+
+          <div>
+            <label for="input-sheet-id" class="block text-xs font-semibold mb-1">Spreadsheet ID</label>
+            <input id="input-sheet-id" type="text" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+              class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-mono" />
+          </div>
+
+          <div>
+            <label for="input-sheet-range" class="block text-xs font-semibold mb-1">Sheet Name / Range</label>
+            <input id="input-sheet-range" type="text" value="Sheet1!A:F"
+              class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-mono" />
+          </div>
+
+          <div>
+            <label for="input-oauth-token" class="block text-xs font-semibold mb-1">OAuth 2.0 Bearer Token</label>
+            <input id="input-oauth-token" type="password" placeholder="ya29.a0AfH6SMC..."
+              class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-mono" />
+          </div>
+
+          <button type="submit"
+            class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm transition-colors cursor-pointer">
+            <span data-i18n="btnSaveConfig">कॉन्फ़िगरेशन सेव करें</span>
+          </button>
+        </form>
+      </div>
+
+      <div class="lg:col-span-6 bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+        <h3 class="text-sm font-bold flex items-center gap-2">
+          <i data-lucide="code-2" class="w-4 h-4 text-indigo-500"></i>
+          <span data-i18n="sheetsPayloadHeading">लाइव Google Sheets API पेलोड प्रीव्यू</span>
+        </h3>
+        <p class="text-xs text-slate-500 dark:text-slate-400" data-i18n="sheetsPayloadSub">बैकग्राउंड सिंक वर्कर द्वारा भेजा जाने वाला JSON पेलोड:</p>
+        <pre id="sheets-payload-preview" class="p-4 rounded-xl bg-slate-950 text-emerald-300 text-xs font-mono overflow-x-auto max-h-80"></pre>
+      </div>
+    </section>
+
+    <!-- TAB 3: ARCHITECTURE & LIVE LOGS -->
+    <section id="panel-architecture" class="tab-panel hidden space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+          <div class="text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-1">1. UI + Web Speech + Canvas</div>
+          <p class="text-xs text-slate-600 dark:text-slate-300" data-i18n="arch1">यूज़र एक्शन पर तुरंत IndexedDB में लिखता है, कैनवस एनिमेशन चलाता है और Web Speech API से नरेशन करता है।</p>
+        </div>
+        <div class="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+          <div class="text-xs font-bold text-amber-600 dark:text-amber-400 mb-1">2. IndexedDB + Sync Queue</div>
+          <p class="text-xs text-slate-600 dark:text-slate-300" data-i18n="arch2">दो ऑब्जेक्ट स्टोर्स: 'records' (मुख्य डेटा) और 'sync_queue' (ऑफलाइन लंबित बदलाव)।</p>
+        </div>
+        <div class="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+          <div class="text-xs font-bold text-violet-600 dark:text-violet-400 mb-1">3. Service Worker &amp; Sync</div>
+          <p class="text-xs text-slate-600 dark:text-slate-300" data-i18n="arch3">ऑफलाइन कैशिंग संभालता है और नेटवर्क लौटते ही 'sync-sheets-queue' टैग से ऑटो-सिंक ट्रिगर करता है।</p>
+        </div>
+        <div class="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+          <div class="text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-1">4. Google Sheets API v4</div>
+          <p class="text-xs text-slate-600 dark:text-slate-300" data-i18n="arch4">कतार में रखे सभी रिकॉर्ड्स को बैच में Google Sheets में अपेंड कर लोकल स्टेटस अपडेट करता है।</p>
+        </div>
+      </div>
+
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold flex items-center gap-2">
+            <i data-lucide="terminal" class="w-4 h-4 text-slate-500"></i>
+            <span data-i18n="logsHeading">ऑटोमेटेड बैकग्राउंड सिंक इवेंट लॉग</span>
+          </h3>
+          <button id="btn-clear-logs" type="button"
+            class="px-2.5 py-1 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer" data-i18n="btnClearLogs">लॉग साफ़ करें</button>
+        </div>
+        <div id="event-logs" class="bg-slate-950 text-slate-200 rounded-xl p-4 font-mono text-xs space-y-1.5 max-h-72 overflow-y-auto"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // =========================================================================
+    // 1. I18N DICTIONARY (HINDI & ENGLISH)
+    // =========================================================================
+    const I18N = {
+      hi: {
+        appTitle: 'AutoSync Studio',
+        appSubtitle: 'ऑफलाइन-फर्स्ट PWA, IndexedDB व Google Sheets सिंक',
+        speechOn: 'आवाज़: चालू',
+        speechOff: 'आवाज़: बंद',
+        onlineLabel: 'ऑनलाइन (ऑटो-सिंक सक्रिय)',
+        offlineLabel: 'ऑफलाइन मोड (कतारबद्ध)',
+        kpiTotal: 'कुल रिकॉर्ड (IndexedDB)',
+        kpiSynced: 'सिंक हो चुके',
+        kpiSheetsTarget: 'Google Sheets v4',
+        kpiPending: 'सिंक कतार (Queue)',
+        syncIdle: 'ऑटो-वॉचर तैयार',
+        syncRunning: 'सिंक हो रहा है...',
+        kpiWorker: 'सर्विस वर्कर',
+        tabWorkspace: 'डेटा और ऑटो-सिंक',
+        tabSheets: 'Google Sheets API',
+        tabArch: 'आर्किटेक्चर व लॉग्स',
+        formHeading: 'नया रिकॉर्ड जोड़ें',
+        formSub: 'ऑफलाइन होने पर भी डेटा IndexedDB में सुरक्षित रहेगा और ऑनलाइन होते ही अपने आप सिंक हो जाएगा।',
+        labelTitle: 'शीर्षक / कार्य',
+        labelCategory: 'श्रेणी',
+        labelValue: 'मान / मात्रा',
+        labelNotes: 'विवरण (वैकल्पिक)',
+        btnSave: 'सेव करें और ऑटो-सिंक में भेजें',
+        toolsHeading: 'डेटा बैकअप व इंटरैक्टिव टूल्स',
+        btnExport: 'JSON एक्सपोर्ट',
+        btnExportCsv: 'CSV एक्सपोर्ट (Google Sheets रेडी)',
+        btnImport: 'JSON इंपोर्ट',
+        btnNarrate: 'सारांश सुनें',
+        btnCelebrate: 'कैनवस एनिमेशन',
+        recordsHeading: 'IndexedDB रिकॉर्ड्स',
+        recordsSub: 'सिंक स्थिति के साथ लाइव लोकल डेटाबेस',
+        filterAll: 'सभी',
+        filterSynced: 'सिंक हो चुके',
+        filterPending: 'लंबित (Queue)',
+        btnSyncNow: 'अभी सिंक करें',
+        sheetsHeading: 'Google Sheets API v4 कॉन्फ़िगरेशन',
+        sheetsDesc: 'असली Google Sheet में ऑटो-अपेंड करने के लिए अपनी Spreadsheet ID और OAuth2 Access Token दर्ज करें, या तुरंत परीक्षण के लिए डेमो सिंक मोड चालू रखें।',
+        demoModeTitle: 'ऑटोमेटेड डेमो सिंक मोड',
+        demoModeSub: 'बिना API कुंजी के बैकग्राउंड सिंक का अनुभव करें',
+        btnSaveConfig: 'कॉन्फ़िगरेशन सेव करें',
+        sheetsPayloadHeading: 'लाइव Google Sheets API पेलोड प्रीव्यू',
+        sheetsPayloadSub: 'बैकग्राउंड सिंक वर्कर द्वारा भेजा जाने वाला JSON पेलोड:',
+        arch1: 'यूज़र एक्शन पर तुरंत IndexedDB में लिखता है, कैनवस एनिमेशन चलाता है और Web Speech API से नरेशन करता है।',
+        arch2: "दो ऑब्जेक्ट स्टोर्स: 'records' (मुख्य डेटा) और 'sync_queue' (ऑफलाइन लंबित बदलाव)।",
+        arch3: "ऑफलाइन कैशिंग संभालता है और नेटवर्क लौटते ही 'sync-sheets-queue' टैग से ऑटो-सिंक ट्रिगर करता है।",
+        arch4: 'कतार में रखे सभी रिकॉर्ड्स को बैच में Google Sheets में अपेंड कर लोकल स्टेटस अपडेट करता है।',
+        logsHeading: 'ऑटोमेटेड बैकग्राउंड सिंक इवेंट लॉग',
+        btnClearLogs: 'लॉग साफ़ करें',
+        emptyRecords: 'इस फ़िल्टर में कोई रिकॉर्ड नहीं है। नया रिकॉर्ड जोड़कर देखें!',
+        badgeSynced: 'सिंक हो गया',
+        badgePending: 'कतारबद्ध (Pending)',
+        speakSavedOffline: 'रिकॉर्ड ऑफलाइन सेव किया गया और सिंक कतार में जोड़ा गया।',
+        speakSavedOnline: 'रिकॉर्ड सेव हो गया और बैकग्राउंड में Google Sheets से सिंक हो गया।',
+        speakBackOnline: 'इंटरनेट कनेक्ट हो गया है। लंबित डेटा अपने आप सिंक हो रहा है।',
+        speakExported: 'JSON बैकअप सफलतापूर्वक एक्सपोर्ट किया गया।',
+        speakImported: 'JSON डेटा सफलतापूर्वक इंपोर्ट और कतारबद्ध किया गया।',
+        speakSummary: (total, synced, pending) => `आपके डेटाबेस में कुल ${total} रिकॉर्ड्स हैं। ${synced} रिकॉर्ड्स Google Sheets में सिंक हो चुके हैं, और ${pending} लंबित हैं।`,
+      },
+      en: {
+        appTitle: 'AutoSync Studio',
+        appSubtitle: 'Offline-First PWA, IndexedDB & Google Sheets Sync',
+        speechOn: 'Voice: ON',
+        speechOff: 'Voice: OFF',
+        onlineLabel: 'Online (Auto-Sync Active)',
+        offlineLabel: 'Offline Mode (Queued)',
+        kpiTotal: 'Total Records (IndexedDB)',
+        kpiSynced: 'Synced to Cloud',
+        kpiSheetsTarget: 'Google Sheets v4',
+        kpiPending: 'Sync Queue',
+        syncIdle: 'Auto-watcher ready',
+        syncRunning: 'Syncing queue...',
+        kpiWorker: 'Service Worker',
+        tabWorkspace: 'Data & Auto-Sync',
+        tabSheets: 'Google Sheets API',
+        tabArch: 'Architecture & Logs',
+        formHeading: 'Add New Record',
+        formSub: 'Data is saved safely in IndexedDB even offline and syncs automatically once connectivity returns.',
+        labelTitle: 'Title / Task',
+        labelCategory: 'Category',
+        labelValue: 'Value / Qty',
+        labelNotes: 'Notes (Optional)',
+        btnSave: 'Save & Queue Auto-Sync',
+        toolsHeading: 'Data Backup & Interactive Tools',
+        btnExport: 'Export JSON',
+        btnExportCsv: 'Export CSV (Sheets Ready)',
+        btnImport: 'Import JSON',
+        btnNarrate: 'Narrate Summary',
+        btnCelebrate: 'Canvas Celebration',
+        recordsHeading: 'IndexedDB Records',
+        recordsSub: 'Live local database with background sync state',
+        filterAll: 'All',
+        filterSynced: 'Synced',
+        filterPending: 'Pending (Queue)',
+        btnSyncNow: 'Sync Now',
+        sheetsHeading: 'Google Sheets API v4 Configuration',
+        sheetsDesc: 'Enter your Spreadsheet ID and OAuth2 Access Token for live Google Sheets appending, or keep Demo Sync Mode enabled to test automated background sync.',
+        demoModeTitle: 'Automated Demo Sync Mode',
+        demoModeSub: 'Experience background sync without an API key',
+        btnSaveConfig: 'Save Configuration',
+        sheetsPayloadHeading: 'Live Google Sheets API Payload Preview',
+        sheetsPayloadSub: 'JSON payload dispatched by the Background Sync Worker:',
+        arch1: 'Writes immediately to IndexedDB on user action, triggers Canvas celebrations, and narrates via Web Speech API.',
+        arch2: "Two object stores: 'records' (primary data) and 'sync_queue' (offline pending mutations).",
+        arch3: "Handles offline asset caching and fires 'sync-sheets-queue' automatically when network reconnects.",
+        arch4: 'Batch-appends queued records to Google Sheets and updates local sync status.',
+        logsHeading: 'Automated Background Sync Event Log',
+        btnClearLogs: 'Clear Logs',
+        emptyRecords: 'No records match this filter. Try adding a new record!',
+        badgeSynced: 'Synced',
+        badgePending: 'Queued (Pending)',
+        speakSavedOffline: 'Record saved offline and added to the background sync queue.',
+        speakSavedOnline: 'Record saved and automatically synced to Google Sheets.',
+        speakBackOnline: 'Connection restored. Syncing queued records automatically.',
+        speakExported: 'JSON backup exported successfully.',
+        speakImported: 'JSON data imported and queued for sync.',
+        speakSummary: (total, synced, pending) => `You have ${total} total records. ${synced} are synced to Google Sheets, and ${pending} are pending in the queue.`,
+      }
+    };
+
+    // =========================================================================
+    // 2. APPLICATION STATE & STORAGE HELPERS
+    // =========================================================================
+    const state = {
+      lang: 'hi',
+      dark: false,
+      online: typeof navigator !== 'undefined' ? navigator.onLine : true,
+      speechEnabled: true,
+      filter: 'all',
+      syncing: false,
+      records: [],
+      logs: [],
+      sheetsConfig: {
+        demoMode: true,
+        spreadsheetId: '',
+        range: 'Sheet1!A:F',
+        token: '',
+      },
+      storageBackend: 'IndexedDB',
+    };
+
+    function safeStorageGet(key, fallback) {
+      try {
+        const val = localStorage.getItem(key);
+        return val ? JSON.parse(val) : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    }
+
+    function safeStorageSet(key, val) {
+      try {
+        localStorage.setItem(key, JSON.stringify(val));
+      } catch (e) {
+        // Ignore storage restrictions in sandboxed previews
+      }
+    }
+
+    // =========================================================================
+    // 3. INDEXEDDB PERSISTENCE LAYER (WITH IN-MEMORY FALLBACK)
+    // =========================================================================
+    const DB_NAME = 'AutoSyncStudioDB';
+    const DB_VERSION = 1;
+    let dbInstance = null;
+    const memoryStores = { records: new Map(), sync_queue: new Map() };
+
+    function openDatabase() {
+      return new Promise((resolve) => {
+        try {
+          if (!('indexedDB' in window)) {
+            state.storageBackend = 'Memory Fallback';
+            resolve(null);
+            return;
+          }
+          const req = indexedDB.open(DB_NAME, DB_VERSION);
+          req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('records')) {
+              db.createObjectStore('records', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('sync_queue')) {
+              db.createObjectStore('sync_queue', { keyPath: 'id' });
+            }
+          };
+          req.onsuccess = (e) => {
+            dbInstance = e.target.result;
+            state.storageBackend = 'IndexedDB (Active)';
+            resolve(dbInstance);
+          };
+          req.onerror = () => {
+            state.storageBackend = 'Memory Fallback';
+            resolve(null);
+          };
+        } catch (err) {
+          state.storageBackend = 'Memory Fallback';
+          resolve(null);
+        }
+      });
+    }
+
+    function dbGetAll(storeName) {
+      return new Promise((resolve) => {
+        if (!dbInstance) {
+          resolve(Array.from((memoryStores[storeName] || new Map()).values()));
+          return;
+        }
+        try {
+          const tx = dbInstance.transaction(storeName, 'readonly');
+          const store = tx.objectStore(storeName);
+          const req = store.getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => resolve([]);
+        } catch (e) {
+          resolve([]);
+        }
+      });
+    }
+
+    function structuredCloneSafe(value) {
+      try { return structuredClone(value); } catch (_) { return JSON.parse(JSON.stringify(value)); }
+    }
+
+    function dbPut(storeName, item) {
+      return new Promise((resolve) => {
+        if (!dbInstance) {
+          if (memoryStores[storeName]) memoryStores[storeName].set(item.id, structuredCloneSafe(item));
+          resolve(true);
+          return;
+        }
+        try {
+          const tx = dbInstance.transaction(storeName, 'readwrite');
+          tx.objectStore(storeName).put(item);
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+        } catch (e) {
+          resolve(false);
+        }
+      });
+    }
+
+    function dbDelete(storeName, id) {
+      return new Promise((resolve) => {
+        if (!dbInstance) {
+          if (memoryStores[storeName]) memoryStores[storeName].delete(id);
+          resolve(true);
+          return;
+        }
+        try {
+          const tx = dbInstance.transaction(storeName, 'readwrite');
+          tx.objectStore(storeName).delete(id);
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+        } catch (e) {
+          resolve(false);
+        }
+      });
+    }
+
+    // =========================================================================
+    // 4. HTML5 CANVAS CELEBRATORY ANIMATION ENGINE
+    // =========================================================================
+    const canvas = document.getElementById('celebration-canvas');
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+    let animFrameId = null;
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function triggerCelebration(intensity = 70) {
+      const colors = ['#4f46e5', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6'];
+      const originX = canvas.width * 0.5;
+      const originY = canvas.height * 0.35;
+
+      for (let i = 0; i < intensity; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 3 + Math.random() * 8;
+        particles.push({
+          x: originX + (Math.random() - 0.5) * 120,
+          y: originY + (Math.random() - 0.5) * 40,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 3,
+          size: 4 + Math.random() * 6,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          alpha: 1,
+          rotation: Math.random() * 360,
+          rotSpeed: (Math.random() - 0.5) * 12,
+          shape: Math.random() > 0.4 ? 'rect' : 'circle',
+        });
+      }
+
+      if (!animFrameId) {
+        animateParticles();
+      }
+    }
+
+    function animateParticles() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles = particles.filter((p) => p.alpha > 0.02);
+
+      for (const p of particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.22; // gravity
+        p.vx *= 0.99;
+        p.rotation += p.rotSpeed;
+        p.alpha -= 0.014;
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        ctx.translate(p.x, p.y);
+        ctx.rotate((p.rotation * Math.PI) / 180);
+        ctx.fillStyle = p.color;
+        if (p.shape === 'rect') {
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+        } else {
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      if (particles.length > 0) {
+        animFrameId = requestAnimationFrame(animateParticles);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        animFrameId = null;
+      }
+    }
+
+    // =========================================================================
+    // 5. WEB SPEECH API NARRATION MODULE
+    // =========================================================================
+    function speak(text) {
+      if (!state.speechEnabled || !('speechSynthesis' in window)) return;
+      try {
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = state.lang === 'hi' ? 'hi-IN' : 'en-US';
+        utter.rate = 1.02;
+        window.speechSynthesis.speak(utter);
+      } catch (e) {
+        // Ignore speech synthesis errors in restricted environments
+      }
+    }
+
+    // =========================================================================
+    // 6. LOGGING & TOAST NOTIFICATIONS
+    // =========================================================================
+    function addLog(source, message, level = 'info') {
+      const time = new Date().toLocaleTimeString();
+      state.logs.unshift({ time, source, message, level });
+      if (state.logs.length > 60) state.logs.pop();
+      renderLogs();
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const colors = {
+        success: 'bg-emerald-600 text-white',
+        warning: 'bg-amber-500 text-slate-950',
+        error: 'bg-rose-600 text-white',
+        info: 'bg-slate-900 dark:bg-slate-800 text-white border border-slate-700',
+      };
+      const el = document.createElement('div');
+      el.className = `pointer-events-auto px-4 py-2.5 rounded-xl shadow-lg text-xs font-semibold flex items-center justify-between gap-2 transition-all ${colors[type] || colors.info}`;
+      el.textContent = message;
+      container.appendChild(el);
+      setTimeout(() => {
+        el.style.opacity = '0';
+        setTimeout(() => el.remove(), 250);
+      }, 3200);
+    }
+
+    // =========================================================================
+    // 7. BACKGROUND SYNC & GOOGLE SHEETS API ENGINE
+    // =========================================================================
+    async function processBackgroundSync(manual = false) {
+      if (state.syncing) return;
+      const pending = state.records.filter((r) => r.status === 'pending');
+      if (pending.length === 0) {
+        if (manual) {
+          showToast(state.lang === 'hi' ? 'सभी रिकॉर्ड पहले से सिंक हैं।' : 'All records are already synced.', 'info');
+        }
+        return;
+      }
+
+      if (!state.online) {
+        addLog('SyncWorker', `Offline: ${pending.length} item(s) waiting in sync_queue.`, 'warning');
+        if (manual) {
+          showToast(state.lang === 'hi' ? 'ऑफलाइन हैं — ऑनलाइन होते ही ऑटो-सिंक होगा।' : 'Offline — will auto-sync when online.', 'warning');
+        }
+        return;
+      }
+
+      state.syncing = true;
+      renderKPIs();
+      addLog('SyncWorker', `Background Sync triggered for ${pending.length} record(s)...`, 'info');
+
+      const values = pending.map((r) => [r.id, r.title, r.category, r.value, r.notes || '', r.createdAt]);
+
+      try {
+        if (state.sheetsConfig.demoMode || !state.sheetsConfig.spreadsheetId || !state.sheetsConfig.token) {
+          // Simulated async network call for Demo Sync Mode
+          await new Promise((r) => setTimeout(r, 650));
+          addLog('GoogleSheetsAPI', `[Demo Mode] Appended ${pending.length} row(s) to ${state.sheetsConfig.range}.`, 'success');
+        } else {
+          const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(state.sheetsConfig.spreadsheetId)}/values/${encodeURIComponent(state.sheetsConfig.range)}:append?valueInputOption=USER_ENTERED`;
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${state.sheetsConfig.token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ values }),
+          });
+          if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}`);
+          }
+          addLog('GoogleSheetsAPI', `Live API appended ${pending.length} row(s) successfully.`, 'success');
+        }
+
+        // Update local IndexedDB records & clear sync_queue
+        for (const item of pending) {
+          item.status = 'synced';
+          item.syncedAt = new Date().toISOString();
+          await dbPut('records', item);
+          await dbDelete('sync_queue', item.id);
+        }
+
+        document.getElementById('kpi-last-sync').textContent = new Date().toLocaleTimeString();
+        triggerCelebration(65);
+        showToast(
+          state.lang === 'hi'
+            ? `${pending.length} रिकॉर्ड Google Sheets में सिंक हो गए!`
+            : `Synced ${pending.length} record(s) to Google Sheets!`,
+          'success'
+        );
+      } catch (err) {
+        addLog('GoogleSheetsAPI', `Sync error (${err.message}). Keeping items in sync_queue for retry.`, 'error');
+        showToast(
+          state.lang === 'hi'
+            ? `सिंक त्रुटि: ${err.message} (डेटा कतार में सुरक्षित है)`
+            : `Sync failed: ${err.message} (retained in queue)`,
+          'error'
+        );
+      } finally {
+        state.syncing = false;
+        renderAll();
+      }
+    }
+
+    // =========================================================================
+    // 8. CRUD & JSON EXPORT/IMPORT ACTIONS
+    // =========================================================================
+    async function addRecord(title, category, value, notes) {
+      const record = {
+        id: 'REC-' + Date.now().toString(36).toUpperCase(),
+        title: title.trim(),
+        category,
+        value: Number(value),
+        notes: notes.trim(),
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      };
+
+      state.records.unshift(record);
+      await dbPut('records', record);
+      await dbPut('sync_queue', { id: record.id, queuedAt: record.createdAt });
+      addLog('IndexedDB', `Saved ${record.id} ("${record.title}") to 'records' & 'sync_queue'.`, 'info');
+      renderAll();
+
+      if (state.online) {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then((registration) => registration.sync && registration.sync.register('sync-sheets-queue')).catch(() => {});
+        }
+        speak(I18N[state.lang].speakSavedOnline);
+        await processBackgroundSync(false);
+      } else {
+        triggerCelebration(35);
+        speak(I18N[state.lang].speakSavedOffline);
+        showToast(state.lang === 'hi' ? 'ऑफलाइन सेव किया गया (कतारबद्ध)' : 'Saved offline (queued for sync)', 'warning');
+      }
+    }
+
+    async function deleteRecord(id) {
+      state.records = state.records.filter((r) => r.id !== id);
+      await dbDelete('records', id);
+      await dbDelete('sync_queue', id);
+      addLog('IndexedDB', `Deleted record ${id}.`, 'info');
+      renderAll();
+    }
+
+    function exportJSON() {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        app: 'AutoSync Studio',
+        records: state.records,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `autosync-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      addLog('Backup', `Exported ${state.records.length} record(s) to JSON.`, 'success');
+      triggerCelebration(45);
+      speak(I18N[state.lang].speakExported);
+      showToast(state.lang === 'hi' ? 'JSON बैकअप डाउनलोड शुरू हुआ!' : 'JSON backup downloaded!', 'success');
+    }
+
+    async function importJSONFile(file) {
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) {
+        showToast(state.lang === 'hi' ? 'फ़ाइल 5 MB से छोटी होनी चाहिए।' : 'File must be 5 MB or smaller.', 'error');
+        return;
+      }
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        const items = Array.isArray(parsed) ? parsed : (parsed.records || []);
+        if (!Array.isArray(items) || items.length === 0 || items.length > 10000) {
+          showToast(state.lang === 'hi' ? 'JSON फ़ाइल में वैध रिकॉर्ड नहीं मिले।' : 'No valid records found in JSON.', 'error');
+          return;
+        }
+        let added = 0;
+        for (const raw of items) {
+          const rec = {
+            id: raw.id || ('IMP-' + Math.random().toString(36).slice(2, 7).toUpperCase()),
+            title: String(raw.title || 'Imported Item'),
+            category: String(raw.category || 'Operations'),
+            value: Number.isFinite(Number(raw.value)) ? Number(raw.value) : 0,
+            notes: String(raw.notes || ''),
+            status: 'pending',
+            createdAt: raw.createdAt || new Date().toISOString(),
+          };
+          const exists = state.records.some((r) => r.id === rec.id);
+          if (!exists) {
+            state.records.unshift(rec);
+            await dbPut('records', rec);
+            await dbPut('sync_queue', { id: rec.id, queuedAt: new Date().toISOString() });
+            added++;
+          }
+        }
+        addLog('Backup', `Imported ${added} new record(s) into IndexedDB.`, 'success');
+        renderAll();
+        triggerCelebration(60);
+        speak(I18N[state.lang].speakImported);
+        if (state.online && added > 0) {
+          await processBackgroundSync(false);
+        }
+      } catch (err) {
+        showToast(state.lang === 'hi' ? 'अमान्य JSON फ़ाइल।' : 'Invalid JSON file.', 'error');
+      }
+    }
+
+    // =========================================================================
+    // 9. UI RENDERING
+    // =========================================================================
+    function applyTranslations() {
+      const dict = I18N[state.lang];
+      document.documentElement.lang = state.lang;
+      document.querySelectorAll('[data-i18n]').forEach((el) => {
+        const key = el.getAttribute('data-i18n');
+        if (typeof dict[key] === 'string') {
+          el.textContent = dict[key];
+        }
+      });
+      document.getElementById('speech-label').textContent = state.speechEnabled ? dict.speechOn : dict.speechOff;
+      updateNetworkUI();
+    }
+
+    function updateNetworkUI() {
+      const btn = document.getElementById('btn-network-toggle');
+      const dot = document.getElementById('network-dot');
+      const label = document.getElementById('network-label');
+      const dict = I18N[state.lang];
+
+      if (state.online) {
+        btn.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors cursor-pointer bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800';
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-500 pulse-dot';
+        label.textContent = dict.onlineLabel;
+      } else {
+        btn.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors cursor-pointer bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800';
+        dot.className = 'w-2 h-2 rounded-full bg-amber-500';
+        label.textContent = dict.offlineLabel;
+      }
+    }
+
+    function renderKPIs() {
+      const total = state.records.length;
+      const synced = state.records.filter((r) => r.status === 'synced').length;
+      const pending = total - synced;
+
+      document.getElementById('kpi-total').textContent = total;
+      document.getElementById('kpi-synced').textContent = synced;
+      document.getElementById('kpi-pending').textContent = pending;
+      document.getElementById('kpi-storage-mode').textContent = state.storageBackend;
+      document.getElementById('kpi-sync-state').textContent = state.syncing
+        ? I18N[state.lang].syncRunning
+        : I18N[state.lang].syncIdle;
+    }
+
+    function renderRecords() {
+      const container = document.getElementById('records-list');
+      const dict = I18N[state.lang];
+      const filtered = state.records.filter((r) => {
+        if (state.filter === 'all') return true;
+        return r.status === state.filter;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="text-center py-12 text-xs text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">${dict.emptyRecords}</div>`;
+        return;
+      }
+
+      container.innerHTML = filtered.map((r) => {
+        const isSynced = r.status === 'synced';
+        const badgeClass = isSynced
+          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300'
+          : 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300';
+        const badgeText = isSynced ? dict.badgeSynced : dict.badgePending;
+
+        return `
+          <div class="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/50 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-semibold text-sm truncate">${escapeHtml(r.title)}</span>
+                <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${badgeClass}">${badgeText}</span>
+              </div>
+              <div class="text-xs text-slate-500 dark:text-slate-400 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>${escapeHtml(r.category)}</span>
+                <span class="font-mono font-semibold text-slate-700 dark:text-slate-200">${r.value}</span>
+                ${r.notes ? `<span class="truncate max-w-[200px]">${escapeHtml(r.notes)}</span>` : ''}
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button type="button" data-action="speak" data-id="${escapeHtml(r.id)}" title="Narrate"
+                class="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 cursor-pointer">
+                <i data-lucide="volume-2" class="w-3.5 h-3.5"></i>
+              </button>
+              <button type="button" data-action="delete" data-id="${escapeHtml(r.id)}" title="Delete"
+                class="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-rose-600 cursor-pointer">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function renderPayloadPreview() {
+      const pending = state.records.filter((r) => r.status === 'pending');
+      const sample = (pending.length > 0 ? pending : state.records.slice(0, 2)).map((r) => [
+        r.id, r.title, r.category, r.value, r.notes || '', r.createdAt
+      ]);
+      const preview = {
+        endpoint: `https://sheets.googleapis.com/v4/spreadsheets/${state.sheetsConfig.spreadsheetId || '<SPREADSHEET_ID>'}/values/${state.sheetsConfig.range}:append`,
+        method: 'POST',
+        mode: state.sheetsConfig.demoMode ? 'AUTOMATED_DEMO_SYNC' : 'LIVE_OAUTH2_SYNC',
+        body: {
+          majorDimension: 'ROWS',
+          values: sample,
+        },
+      };
+      document.getElementById('sheets-payload-preview').textContent = JSON.stringify(preview, null, 2);
+    }
+
+    function renderLogs() {
+      const el = document.getElementById('event-logs');
+      if (state.logs.length === 0) {
+        el.innerHTML = '<div class="text-slate-500">No events logged yet.</div>';
+        return;
+      }
+      const colorMap = {
+        info: 'text-sky-300',
+        success: 'text-emerald-400',
+        warning: 'text-amber-300',
+        error: 'text-rose-400',
+      };
+      el.innerHTML = state.logs.map((l) => `
+        <div class="leading-relaxed">
+          <span class="text-slate-500">[${l.time}]</span>
+          <span class="text-indigo-400 font-semibold">[${l.source}]</span>
+          <span class="${colorMap[l.level] || 'text-slate-200'}">${escapeHtml(l.message)}</span>
+        </div>
+      `).join('');
+    }
+
+    function renderAll() {
+      applyTranslations();
+      renderKPIs();
+      renderRecords();
+      renderPayloadPreview();
+      renderLogs();
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // =========================================================================
+    // 10. EVENT LISTENERS & INITIALIZATION
+    // =========================================================================
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = btn.getAttribute('data-tab');
+        document.querySelectorAll('.tab-btn').forEach((b) => {
+          const active = b.getAttribute('data-tab') === target;
+          b.className = active
+            ? 'tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white transition-colors cursor-pointer'
+            : 'tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer';
+        });
+        document.querySelectorAll('.tab-panel').forEach((p) => {
+          p.classList.toggle('hidden', p.id !== `panel-${target}`);
+        });
+      });
+    });
+
+    document.getElementById('btn-network-toggle').addEventListener('click', async () => {
+      state.online = !state.online;
+      updateNetworkUI();
+      addLog('NetworkWatcher', state.online ? 'Network status changed to ONLINE.' : 'Network status changed to OFFLINE.', state.online ? 'success' : 'warning');
+      if (state.online) {
+        const pendingCount = state.records.filter((r) => r.status === 'pending').length;
+        if (pendingCount > 0) {
+          speak(I18N[state.lang].speakBackOnline);
+          await processBackgroundSync(false);
+        }
+      }
+    });
+
+    document.getElementById('btn-speech-toggle').addEventListener('click', () => {
+      state.speechEnabled = !state.speechEnabled;
+      applyTranslations();
+      if (!state.speechEnabled && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    });
+
+    document.getElementById('btn-lang-toggle').addEventListener('click', () => {
+      state.lang = state.lang === 'hi' ? 'en' : 'hi';
+      safeStorageSet('autosync_lang', state.lang);
+      renderAll();
+    });
+
+    document.getElementById('btn-theme-toggle').addEventListener('click', () => {
+      state.dark = !state.dark;
+      document.documentElement.classList.toggle('dark', state.dark);
+      safeStorageSet('autosync_dark', state.dark);
+      const icon = document.getElementById('theme-icon');
+      icon.setAttribute('data-lucide', state.dark ? 'sun' : 'moon');
+      if (window.lucide) lucide.createIcons();
+    });
+
+    document.getElementById('record-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const titleEl = document.getElementById('input-title');
+      const catEl = document.getElementById('input-category');
+      const valEl = document.getElementById('input-value');
+      const notesEl = document.getElementById('input-notes');
+      if (!titleEl.value.trim() || valEl.value === '') return;
+
+      await addRecord(titleEl.value, catEl.value, valEl.value, notesEl.value);
+      titleEl.value = '';
+      valEl.value = '';
+      notesEl.value = '';
+    });
+
+    document.getElementById('filter-status').addEventListener('change', (e) => {
+      state.filter = e.target.value;
+      renderRecords();
+    });
+
+    document.getElementById('btn-force-sync').addEventListener('click', () => {
+      processBackgroundSync(true);
+    });
+
+    function exportCSV() {
+      const headers = ['ID', 'Title', 'Category', 'Value', 'Notes', 'Status', 'CreatedAt'];
+      const rows = state.records.map((r) => [
+        r.id, r.title, r.category, r.value, r.notes || '', r.status, r.createdAt
+      ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
+      const csv = [headers.join(','), ...rows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `autosync-sheets-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      addLog('Backup', `Exported ${state.records.length} record(s) to CSV.`, 'success');
+      triggerCelebration(45);
+      showToast(state.lang === 'hi' ? 'CSV फ़ाइल डाउनलोड शुरू हुई!' : 'CSV file downloaded!', 'success');
+    }
+
+    document.getElementById('btn-export-json').addEventListener('click', exportJSON);
+    document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
+
+    document.getElementById('input-import-json').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) importJSONFile(file);
+      e.target.value = '';
+    });
+
+    document.getElementById('btn-narrate-summary').addEventListener('click', () => {
+      const total = state.records.length;
+      const synced = state.records.filter((r) => r.status === 'synced').length;
+      speak(I18N[state.lang].speakSummary(total, synced, total - synced));
+    });
+
+    document.getElementById('btn-test-celebrate').addEventListener('click', () => {
+      triggerCelebration(80);
+    });
+
+    document.getElementById('records-list').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const action = btn.getAttribute('data-action');
+      const id = btn.getAttribute('data-id');
+      const rec = state.records.find((r) => r.id === id);
+      if (!rec) return;
+
+      if (action === 'delete') {
+        deleteRecord(id);
+      } else if (action === 'speak') {
+        const msg = state.lang === 'hi'
+          ? `${rec.title}, श्रेणी ${rec.category}, मान ${rec.value}।`
+          : `${rec.title}, category ${rec.category}, value ${rec.value}.`;
+        speak(msg);
+      }
+    });
+
+    document.getElementById('sheets-config-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      state.sheetsConfig.demoMode = document.getElementById('toggle-demo-mode').checked;
+      state.sheetsConfig.spreadsheetId = document.getElementById('input-sheet-id').value.trim();
+      state.sheetsConfig.range = document.getElementById('input-sheet-range').value.trim() || 'Sheet1!A:F';
+      state.sheetsConfig.token = document.getElementById('input-oauth-token').value.trim();
+      safeStorageSet('autosync_sheets_cfg', {
+        demoMode: state.sheetsConfig.demoMode,
+        spreadsheetId: state.sheetsConfig.spreadsheetId,
+        range: state.sheetsConfig.range,
+      });
+
+      const badge = document.getElementById('sheets-mode-badge');
+      badge.textContent = state.sheetsConfig.demoMode
+        ? (state.lang === 'hi' ? 'डेमो सिंक मोड' : 'Demo Sync Mode')
+        : (state.lang === 'hi' ? 'लाइव API मोड' : 'Live API Mode');
+      renderPayloadPreview();
+      addLog('Config', `Google Sheets config updated (Demo=${state.sheetsConfig.demoMode}).`, 'info');
+      showToast(state.lang === 'hi' ? 'कॉन्फ़िगरेशन सेव हो गया!' : 'Configuration saved!', 'success');
+    });
+
+    document.getElementById('btn-clear-logs').addEventListener('click', () => {
+      state.logs = [];
+      renderLogs();
+    });
+
+    window.addEventListener('online', () => {
+      state.online = true;
+      updateNetworkUI();
+      addLog('NetworkWatcher', 'Browser online event detected — triggering Background Sync.', 'success');
+      processBackgroundSync(false);
+    });
+
+    window.addEventListener('offline', () => {
+      state.online = false;
+      updateNetworkUI();
+      addLog('NetworkWatcher', 'Browser offline event detected — queueing mutations.', 'warning');
+    });
+
+    async function bootstrap() {
+      const savedLang = safeStorageGet('autosync_lang', 'hi');
+      state.lang = savedLang === 'en' ? 'en' : 'hi';
+      state.dark = safeStorageGet('autosync_dark', false) === true;
+      if (state.dark) document.documentElement.classList.add('dark');
+
+      const savedCfg = safeStorageGet('autosync_sheets_cfg', null);
+      if (savedCfg) {
+        state.sheetsConfig.demoMode = savedCfg.demoMode;
+        state.sheetsConfig.spreadsheetId = savedCfg.spreadsheetId || '';
+        state.sheetsConfig.range = savedCfg.range || 'Sheet1!A:F';
+        document.getElementById('toggle-demo-mode').checked = state.sheetsConfig.demoMode;
+        document.getElementById('input-sheet-id').value = state.sheetsConfig.spreadsheetId;
+        document.getElementById('input-sheet-range').value = state.sheetsConfig.range;
+      }
+
+      await openDatabase();
+      const existing = await dbGetAll('records');
+
+      if (existing.length > 0) {
+        state.records = existing.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      } else {
+        // Seed initial sample records so the dashboard opens rich and immediately testable
+        const seed = [
+          {
+            id: 'REC-INIT01',
+            title: 'स्टोर इन्वेंटरी सिंक (Store Inventory)',
+            category: 'Inventory',
+            value: 420,
+            notes: 'Google Sheets में स्वतः सिंक किया गया',
+            status: 'synced',
+            createdAt: new Date(Date.now() - 3600000).toISOString(),
+          },
+          {
+            id: 'REC-INIT02',
+            title: 'ऑफलाइन ऑर्डर #108 (Offline Order)',
+            category: 'Sales',
+            value: 1850,
+            notes: 'सिंक कतार में प्रतीक्षारत',
+            status: 'pending',
+            createdAt: new Date(Date.now() - 1200000).toISOString(),
+          },
+        ];
+        state.records = seed;
+        for (const item of seed) {
+          await dbPut('records', item);
+          if (item.status === 'pending') {
+            await dbPut('sync_queue', { id: item.id, queuedAt: item.createdAt });
+          }
+        }
+      }
+
+      addLog('Storage', `Initialized (${state.storageBackend}).`, state.storageBackend === 'IndexedDB (Active)' ? 'success' : 'warning');
+      if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+        try {
+          const registration = await navigator.serviceWorker.register('./sw.js');
+          addLog('ServiceWorker', `Registered: ${registration.scope}`, 'success');
+          if ('sync' in registration) {
+            const queued = state.records.some((record) => record.status === 'pending');
+            if (queued) await registration.sync.register('sync-sheets-queue').catch(() => {});
+          }
+        } catch (error) {
+          addLog('ServiceWorker', `Registration failed: ${error.message}`, 'error');
+        }
+      } else {
+        addLog('ServiceWorker', 'Unavailable: use HTTPS or localhost.', 'warning');
+      }
+      renderAll();
+      if (window.lucide) lucide.createIcons();
+    }
+
+    window.addEventListener('load', bootstrap);
+  </script>
+</body>
+</html>
