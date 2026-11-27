@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="hi">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#4338ca"><title>Exam Brahmastra Test Engine V2 | Wonder World Rajasthan</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top"><div><div class="brand">⚡ EXAM BRAHMASTRA <span class="pill">V2</span></div><div class="sub">Wonder World Rajasthan · Bilingual Mock Test Engine</div></div><div class="row"><label class="small" for="language">Language</label><select id="language" style="width:auto"><option value="hi">हिन्दी</option><option value="en">English</option><option value="both">Both</option></select></div></header>
+  <main>
+    <section id="setup" class="panel">
+      <h2 data-i18n="welcome">अपनी परीक्षा की तैयारी जाँचें</h2>
+      <p class="muted" data-i18n="intro">समयबद्ध टेस्ट दें, उत्तरों की समीक्षा करें और अपनी प्रगति देखें।</p>
+      <div class="grid">
+        <div><label for="count" data-i18n="count">प्रश्नों की संख्या</label><select id="count"><option value="10">10 · Demo bank</option><option value="25" disabled>25 प्रश्न (बैंक में पर्याप्त प्रश्न जोड़ें)</option><option value="50" disabled>50 प्रश्न (बैंक में पर्याप्त प्रश्न जोड़ें)</option><option value="100" disabled>100 प्रश्न (बैंक में पर्याप्त प्रश्न जोड़ें)</option></select></div>
+        <div><label for="duration" data-i18n="duration">समय सीमा</label><select id="duration"><option value="10">10 मिनट</option><option value="20">20 मिनट</option><option value="30" selected>30 मिनट</option><option value="60">60 मिनट</option></select></div>
+        <div><label for="negative" data-i18n="negative">गलत उत्तर पर अंक कटौती</label><select id="negative"><option value="0">0</option><option value="0.25" selected>−0.25</option><option value="0.33">−0.33</option><option value="0.5">−0.50</option></select></div>
+        <div><label for="channel" data-i18n="channel">WhatsApp Channel लिंक</label><input id="channel" type="url" placeholder="https://whatsapp.com/channel/..." inputmode="url"></div>
+      </div>
+      <div class="card">
+        <h3 data-i18n="shareTitle">टेस्ट शुरू करने से पहले</h3>
+        <p class="muted" data-i18n="shareDesc">टेस्ट पेज शेयर करें और अपना WhatsApp Channel खोलें। वापस आने के बाद दोनों की पुष्टि करें।</p>
+        <div class="row"><button id="sharePage" type="button">↗ <span data-i18n="share">पेज शेयर करें</span></button><button id="openChannel" class="secondary" type="button">WhatsApp Channel खोलें</button></div>
+        <label class="checkline"><input id="sharedConfirm" type="checkbox"><span data-i18n="sharedConfirm">मैंने टेस्ट पेज शेयर कर दिया है।</span></label>
+        <label class="checkline"><input id="followConfirm" type="checkbox"><span data-i18n="followConfirm">मैंने WhatsApp Channel follow कर लिया है।</span></label>
+        <p class="notice" data-i18n="honesty">पारदर्शिता: वेबसाइट WhatsApp पर share या channel follow की वास्तविक स्थिति तकनीकी रूप से verify नहीं कर सकती। ये विद्यार्थी की स्वयं की पुष्टि हैं।</p>
+      </div>
+      <div class="between"><span class="muted small" id="bankInfo">Question bank loading…</span><button id="start" disabled data-i18n="start">टेस्ट शुरू करें</button></div>
+    </section>
+    <section id="test" class="hidden">
+      <div class="panel"><div class="between"><div><span class="pill" id="subject">Mixed Test</span><div class="muted small" id="progressText">Question 1</div></div><div class="timer" id="timer">30:00</div></div><div class="progress" style="margin-top:12px"><i id="progressBar"></i></div></div>
+      <div class="panel"><div class="between"><span class="pill" id="qNumber">प्रश्न 1</span><span class="muted small" id="qDifficulty">Easy</span></div><div class="qtext" id="questionText"></div><div id="options"></div><div class="row" style="margin-top:16px"><button class="ghost" id="prev">← पिछला</button><button class="secondary" id="review">☆ Mark for Review</button><button class="ghost" id="clear">उत्तर हटाएँ</button><button id="next">अगला →</button></div></div>
+      <div class="panel"><div class="between"><strong data-i18n="palette">Question Palette</strong><span class="muted small" id="paletteLegend">Answered · Review · Unanswered</span></div><div class="palette" id="palette"></div><div class="row" style="margin-top:15px;justify-content:space-between"><span class="muted small" id="answeredCount">0 answered</span><button class="danger" id="submit">टेस्ट जमा करें</button></div></div>
+    </section>
+    <section id="result" class="hidden">
+      <div class="panel"><h2 data-i18n="resultTitle">आपका परिणाम</h2><div class="grid" id="stats"></div><div class="progress" style="margin-top:14px"><i id="resultBar"></i></div><div class="row" style="margin-top:16px"><button id="retryWrong">गलत / छोड़े गए प्रश्न दोबारा करें</button><button class="secondary" id="newTest">नया टेस्ट</button><button class="ghost" id="exportResult">परिणाम डाउनलोड करें</button></div></div>
+      <div class="panel"><h3 data-i18n="reviewTitle">उत्तर और व्याख्या</h3><div id="reviewList"></div></div>
+      <div class="panel"><h3 data-i18n="historyTitle">इस डिवाइस पर टेस्ट इतिहास</h3><div id="history"></div></div>
+    </section>
+  </main>
+  <footer class="footer">Prototype V2 · Local-only demo · Follow verification is self-declared · Question set is illustrative and not an official exam paper.</footer>
+</div>
+<script type="module" src="./main.js"></script>
+</body></html>
