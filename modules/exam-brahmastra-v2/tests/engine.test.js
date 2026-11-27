@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {DEFAULT_CONFIG,validateBank,shuffle,createAttempt,answerQuestion,markForReview,scoreAttempt,makeRetryAttempt,remainingMs} from '../engine.js';
+const bank=JSON.parse(fs.readFileSync(new URL('../questions.json',import.meta.url),'utf8')).questions;
+test('bundled question bank validates and is bilingual',()=>assert.equal(validateBank(bank),true));
+test('duplicate question IDs are rejected',()=>assert.throws(()=>validateBank([bank[0],bank[0]]),/duplicate/));
+test('invalid answer option is rejected',()=>{const q=structuredClone(bank[0]);q.answer='z';assert.throws(()=>validateBank([q]),/Invalid options/)});
+test('shuffle preserves every element exactly once',()=>{const a=[1,2,3,4,5];const b=shuffle(a,()=>0.4);assert.deepEqual([...b].sort(),a);assert.notEqual(b,a)});
+test('attempt creation caps to available bank and initializes all answers',()=>{const a=createAttempt(bank,{questionCount:25},()=>0.2,()=>1000);assert.equal(a.questions.length,10);assert.ok(a.questions.every(q=>q.answer===null));assert.equal(a.status,'in-progress')});
+test('answer and mark-for-review operations update the selected item',()=>{const a=createAttempt(bank,{questionCount:3,shuffleQuestions:false},()=>0.2,()=>1000);answerQuestion(a,0,bank[0].answer);markForReview(a,1,true);assert.equal(a.questions[0].answer,bank[0].answer);assert.equal(a.questions[1].markedForReview,true)});
+test('score calculation includes negative marking and accuracy denominator excludes skips',()=>{const a=createAttempt(bank,{questionCount:3,shuffleQuestions:false,positiveMarks:1,negativeMarks:0.25},()=>0.2,()=>1000);answerQuestion(a,0,bank[0].answer);answerQuestion(a,1,'not-correct');const r=scoreAttempt(a,bank);assert.equal(r.correct,1);assert.equal(r.wrong,1);assert.equal(r.skipped,1);assert.equal(r.marks,0.75);assert.equal(r.accuracy,50)});
+test('all-skipped attempt has zero accuracy and zero score',()=>{const a=createAttempt(bank,{questionCount:2,shuffleQuestions:false},()=>0.2,()=>1000);const r=scoreAttempt(a,bank);assert.equal(r.accuracy,0);assert.equal(r.marks,0);assert.equal(r.skipped,2)});
+test('retry attempt contains wrong and skipped questions only',()=>{const a=createAttempt(bank,{questionCount:4,shuffleQuestions:false},()=>0.2,()=>1000);answerQuestion(a,0,bank[0].answer);answerQuestion(a,1,'wrong');const r=scoreAttempt(a,bank);const retry=makeRetryAttempt(r,{questionCount:3},()=>0.2,()=>2000);assert.deepEqual(retry.questions.map(q=>q.id),[bank[1].id,bank[2].id,bank[3].id])});
+test('remaining time never becomes negative',()=>{const a=createAttempt(bank,{durationMinutes:1},()=>0.2,()=>1000);assert.equal(remainingMs(a,62000),0);assert.equal(remainingMs(a,2000),59000)});
+test('question indices outside bounds throw',()=>{const a=createAttempt(bank,{questionCount:2},()=>0.2,()=>1000);assert.throws(()=>answerQuestion(a,9,'a'),/out of range/)});
